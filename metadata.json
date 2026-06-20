@@ -1,0 +1,6 @@
+{
+  "name": "Job Appointment Calendar",
+  "description": "A sleek calendar to organize appointments across different contracting jobs and sync them with external calendars.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
