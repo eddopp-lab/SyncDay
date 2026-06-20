@@ -70,8 +70,18 @@ export default function App({ userId, userEmail, onLogout }: AppProps) {
         if (!isMounted) return;
 
         if (remoteJobs.length === 0 && remoteAppointments.length === 0) {
-          const seedJobs = SEED_JOBS;
-          const seedAppointments = getSeedAppointments();
+          const userSuffix = userId.slice(0, 8);
+          const idMap: Record<string, string> = {};
+          const seedJobs = SEED_JOBS.map((j) => {
+            const newId = `${j.id}-${userSuffix}`;
+            idMap[j.id] = newId;
+            return { ...j, id: newId };
+          });
+          const seedAppointments = getSeedAppointments().map((a) => ({
+            ...a,
+            id: `${a.id}-${userSuffix}`,
+            jobId: idMap[a.jobId] || a.jobId,
+          }));
           setJobs(seedJobs);
           setAppointments(seedAppointments);
           // Push the seed data up so it persists from the very first login.
@@ -152,8 +162,18 @@ export default function App({ userId, userEmail, onLogout }: AppProps) {
   // Restores clean interactive demo dataset
   const handleResetDemoData = () => {
     if (confirm('Are you sure you want to restore original mock assets? Custom jobs/appointments will be overwritten.')) {
-      const seedJobs = SEED_JOBS;
-      const seedAppointments = getSeedAppointments();
+      const userSuffix = userId.slice(0, 8);
+      const idMap: Record<string, string> = {};
+      const seedJobs = SEED_JOBS.map((j) => {
+        const newId = `${j.id}-${userSuffix}-${Date.now()}`;
+        idMap[j.id] = newId;
+        return { ...j, id: newId };
+      });
+      const seedAppointments = getSeedAppointments().map((a) => ({
+        ...a,
+        id: `${a.id}-${userSuffix}-${Date.now()}`,
+        jobId: idMap[a.jobId] || a.jobId,
+      }));
       // Remove everything currently stored, then re-seed.
       Promise.all(jobs.map((j) => dbDeleteJob(j.id)))
         .then(() => Promise.all(seedJobs.map((j) => dbUpsertJob(j, userId))))
