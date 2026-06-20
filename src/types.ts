@@ -11,7 +11,7 @@ export interface ContractJob {
 }
 
 export type AppointmentStatus = 'scheduled' | 'completed' | 'cancelled';
-export type RecurrenceType = 'none' | 'daily' | 'weekly' | 'monthly';
+export type RecurrenceType = 'none' | 'daily' | 'weekly' | 'fortnightly' | 'monthly';
 
 export interface Appointment {
   id: string;

@@ -392,6 +392,7 @@ export default function AppointmentModal({
                       <option value="none">Once (No Repeat)</option>
                       <option value="daily">Daily</option>
                       <option value="weekly">Weekly</option>
+                      <option value="fortnightly">Fortnightly</option>
                       <option value="monthly">Monthly</option>
                     </select>
                   </div>

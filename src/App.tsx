@@ -278,6 +278,8 @@ export default function App({ userId, userEmail, onLogout }: AppProps) {
             instStart.setDate(baseStart.getDate() + i);
           } else if (data.recurrence === 'weekly') {
             instStart.setDate(baseStart.getDate() + i * 7);
+          } else if (data.recurrence === 'fortnightly') {
+            instStart.setDate(baseStart.getDate() + i * 14);
           } else if (data.recurrence === 'monthly') {
             instStart.setMonth(baseStart.getMonth() + i);
           }
