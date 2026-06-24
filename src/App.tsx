@@ -53,6 +53,13 @@ export default function App({ userId, userEmail, onLogout }: AppProps) {
   const [jobs, setJobs] = useState<ContractJob[]>([]);
   const [appointments, setAppointments] = useState<Appointment[]>([]);
   const [isLoadingData, setIsLoadingData] = useState(true);
+  // A lightweight ticking clock so the "Now" indicator in Day View
+  // advances live without requiring a manual page refresh.
+  const [, setClockTick] = useState(0);
+  useEffect(() => {
+    const interval = setInterval(() => setClockTick((t) => t + 1), 60 * 1000);
+    return () => clearInterval(interval);
+  }, []);
   const [syncError, setSyncError] = useState<string | null>(null);
 
   // Initial load from Supabase. If the user has no data yet, seed it
@@ -373,14 +380,16 @@ export default function App({ userId, userEmail, onLogout }: AppProps) {
 
   // Determine appointments for a given calendar block
   const getDayAppointments = (day: Date) => {
-    return filteredAppointments.filter((app) => {
-      const appDate = new Date(app.startTime);
-      return (
-        appDate.getFullYear() === day.getFullYear() &&
-        appDate.getMonth() === day.getMonth() &&
-        appDate.getDate() === day.getDate()
-      );
-    });
+    return filteredAppointments
+      .filter((app) => {
+        const appDate = new Date(app.startTime);
+        return (
+          appDate.getFullYear() === day.getFullYear() &&
+          appDate.getMonth() === day.getMonth() &&
+          appDate.getDate() === day.getDate()
+        );
+      })
+      .sort((a, b) => new Date(a.startTime).getTime() - new Date(b.startTime).getTime());
   };
 
   // Week helper variables
@@ -846,7 +855,7 @@ export default function App({ userId, userEmail, onLogout }: AppProps) {
                   });
 
                   interface TimelineItem {
-                    type: 'appointment' | 'gap';
+                    type: 'appointment' | 'gap' | 'now';
                     startTime: Date;
                     endTime: Date;
                     appointment?: Appointment;
@@ -891,6 +900,27 @@ export default function App({ userId, userEmail, onLogout }: AppProps) {
                         type: 'gap',
                         startTime: new Date(currentPointer),
                         endTime: new Date(timelineEnd)
+                      });
+                    }
+                  }
+
+                  // Insert a "now" marker at the correct chronological position,
+                  // but only when looking at today's timeline.
+                  const isViewingToday = selectedDate.toDateString() === new Date().toDateString();
+                  if (isViewingToday) {
+                    const nowMs = Date.now();
+                    if (nowMs >= timelineStart && nowMs <= timelineEnd) {
+                      let insertIndex = timelineItems.length;
+                      for (let i = 0; i < timelineItems.length; i++) {
+                        if (timelineItems[i].startTime.getTime() > nowMs) {
+                          insertIndex = i;
+                          break;
+                        }
+                      }
+                      timelineItems.splice(insertIndex, 0, {
+                        type: 'now',
+                        startTime: new Date(nowMs),
+                        endTime: new Date(nowMs),
                       });
                     }
                   }
@@ -1069,6 +1099,31 @@ export default function App({ userId, userEmail, onLogout }: AppProps) {
                                         </div>
                                       );
                                     })()}
+                                  </div>
+                                </div>
+                              );
+                            } else if (item.type === 'now') {
+                              return (
+                                <div key={index} className="flex gap-3 md:gap-5 items-center relative -my-2 z-10">
+                                  {/* Left Time axis column */}
+                                  <div className="w-20 md:w-24 text-right shrink-0 text-rose-600 font-mono text-[10px] md:text-xs font-bold">
+                                    {item.startTime.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false })}
+                                  </div>
+
+                                  {/* Pulsing "now" dot on the axis */}
+                                  <div className="flex flex-col items-center shrink-0">
+                                    <div className="relative w-3.5 h-3.5 flex items-center justify-center">
+                                      <span className="absolute inline-flex h-full w-full rounded-full bg-rose-400 opacity-75 animate-ping" />
+                                      <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-rose-600 border-2 border-white" />
+                                    </div>
+                                  </div>
+
+                                  {/* Horizontal "now" line across the content area */}
+                                  <div className="flex-1 flex items-center gap-2">
+                                    <div className="h-[2px] bg-rose-500 flex-1 rounded-full" />
+                                    <span className="text-[9px] font-bold uppercase tracking-wider text-white bg-rose-600 px-2 py-0.5 rounded-full shrink-0">
+                                      Now
+                                    </span>
                                   </div>
                                 </div>
                               );
