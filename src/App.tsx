@@ -826,368 +826,183 @@ export default function App({ userId, userEmail, onLogout }: AppProps) {
                   </div>
                 )}
 
-                {/* 3. DAY VIEW */}
+                {/* 3. DAY VIEW — Outlook-style 15-min grid */}
                 {view === 'day' && (() => {
-                  const dayAppointments = getDayAppointments(selectedDate).sort((a, b) => 
-                    new Date(a.startTime).getTime() - new Date(b.startTime).getTime()
-                  );
+                  const SLOT_HEIGHT = 16; // px per 15-min slot
+                  const HOUR_HEIGHT = SLOT_HEIGHT * 4; // 64px per hour
+                  const DAY_START_HOUR = 7; // 07:00
+                  const DAY_END_HOUR = 21;  // 21:00
+                  const TOTAL_HOURS = DAY_END_HOUR - DAY_START_HOUR;
+                  const TOTAL_SLOTS = TOTAL_HOURS * 4;
+                  const GRID_HEIGHT = TOTAL_SLOTS * SLOT_HEIGHT; // total px
 
-                  // Define working bounds for the day view (8:00 AM to 8:00 PM by default)
-                  const baseStart = new Date(selectedDate);
-                  baseStart.setHours(8, 0, 0, 0);
+                  const selectedMs = selectedDate.getTime();
+                  const dayStart = new Date(selectedDate);
+                  dayStart.setHours(DAY_START_HOUR, 0, 0, 0);
+                  const dayEnd = new Date(selectedDate);
+                  dayEnd.setHours(DAY_END_HOUR, 0, 0, 0);
 
-                  const baseEnd = new Date(selectedDate);
-                  baseEnd.setHours(20, 0, 0, 0);
+                  const dayAppointments = getDayAppointments(selectedDate);
 
-                  let timelineStart = baseStart.getTime();
-                  let timelineEnd = baseEnd.getTime();
+                  // Position helpers
+                  const msToTop = (ms: number) => {
+                    const clipped = Math.max(dayStart.getTime(), Math.min(dayEnd.getTime(), ms));
+                    return ((clipped - dayStart.getTime()) / (1000 * 60 * 15)) * SLOT_HEIGHT;
+                  };
+                  const msToHeight = (startMs: number, endMs: number) => {
+                    const top = msToTop(startMs);
+                    const bot = msToTop(endMs);
+                    return Math.max(SLOT_HEIGHT, bot - top);
+                  };
 
-                  // Adjust bounds if there are appointments outside 8am-8pm
-                  dayAppointments.forEach(app => {
-                    const appStart = new Date(app.startTime).getTime();
-                    const appEnd = new Date(app.endTime).getTime();
-                    if (appStart < timelineStart) {
-                      timelineStart = appStart;
-                    }
-                    if (appEnd > timelineEnd) {
-                      timelineEnd = appEnd;
-                    }
-                  });
-
-                  interface TimelineItem {
-                    type: 'appointment' | 'gap' | 'now';
-                    startTime: Date;
-                    endTime: Date;
-                    appointment?: Appointment;
-                  }
-
-                  const timelineItems: TimelineItem[] = [];
-                  let currentPointer = timelineStart;
-
-                  dayAppointments.forEach(app => {
-                    const appStart = new Date(app.startTime).getTime();
-                    const appEnd = new Date(app.endTime).getTime();
-
-                    // If there's a gap between currentPointer and appStart
-                    if (appStart > currentPointer) {
-                      if (appStart - currentPointer >= 5 * 60 * 1000) { // minimum 5 mins
-                        timelineItems.push({
-                          type: 'gap',
-                          startTime: new Date(currentPointer),
-                          endTime: new Date(appStart)
-                        });
-                      }
-                    }
-
-                    // Add the appointment block
-                    timelineItems.push({
-                      type: 'appointment',
-                      startTime: new Date(appStart),
-                      endTime: new Date(appEnd),
-                      appointment: app
-                    });
-
-                    // Advance pointer
-                    if (appEnd > currentPointer) {
-                      currentPointer = appEnd;
-                    }
-                  });
-
-                  // If there's a gap at the end
-                  if (timelineEnd > currentPointer) {
-                    if (timelineEnd - currentPointer >= 5 * 60 * 1000) {
-                      timelineItems.push({
-                        type: 'gap',
-                        startTime: new Date(currentPointer),
-                        endTime: new Date(timelineEnd)
-                      });
-                    }
-                  }
-
-                  // Insert a "now" marker at the correct chronological position,
-                  // but only when looking at today's timeline.
                   const isViewingToday = selectedDate.toDateString() === new Date().toDateString();
-                  if (isViewingToday) {
-                    const nowMs = Date.now();
-                    if (nowMs >= timelineStart && nowMs <= timelineEnd) {
-                      let insertIndex = timelineItems.length;
-                      for (let i = 0; i < timelineItems.length; i++) {
-                        if (timelineItems[i].startTime.getTime() > nowMs) {
-                          insertIndex = i;
-                          break;
-                        }
-                      }
-                      timelineItems.splice(insertIndex, 0, {
-                        type: 'now',
-                        startTime: new Date(nowMs),
-                        endTime: new Date(nowMs),
-                      });
-                    }
-                  }
+                  const nowMs = Date.now();
+                  const nowTop = isViewingToday && nowMs >= dayStart.getTime() && nowMs <= dayEnd.getTime()
+                    ? msToTop(nowMs)
+                    : null;
+                  const nowLabel = isViewingToday
+                    ? new Date(nowMs).toLocaleTimeString('en-AU', { hour: '2-digit', minute: '2-digit', hour12: false })
+                    : null;
+
+                  const hours = Array.from({ length: TOTAL_HOURS + 1 }, (_, i) => DAY_START_HOUR + i);
 
                   return (
-                    <div className="space-y-3 font-sans">
-                      <div className="bg-slate-50 rounded p-3 border border-slate-205 flex items-center justify-between text-xs">
-                        <div className="flex items-center gap-1.5">
-                          <span className="text-slate-500 font-medium">Focused view for chosen contracting calendar slot:</span>
-                          {timelineItems.length > 0 && (
-                            <span className="px-1.5 py-0.5 rounded-full bg-slate-200/85 text-slate-700 text-[10px] font-bold">
-                              {timelineItems.filter(t => t.type === 'appointment').length} Booked
-                            </span>
-                          )}
-                        </div>
+                    <div className="bg-white border border-slate-200 rounded overflow-hidden">
+                      {/* Top toolbar */}
+                      <div className="flex items-center justify-between px-4 py-2 border-b border-slate-100 bg-slate-50">
+                        <span className="text-xs text-slate-500 font-medium">
+                          {dayAppointments.length} appointment{dayAppointments.length !== 1 ? 's' : ''}
+                        </span>
                         <button
-                          id="day-add-new-btn"
+                          id="day-grid-add-btn"
                           onClick={() => {
                             setActiveAppointment(null);
                             setInitialDateForCreate(selectedDate);
                             setIsModalOpen(true);
                           }}
-                          className="text-slate-800 hover:text-slate-950 font-semibold flex items-center gap-1 cursor-pointer"
+                          className="text-slate-700 hover:text-slate-900 font-semibold flex items-center gap-1 text-xs cursor-pointer"
                         >
-                          <Plus className="w-3.5 h-3.5" /> Create Slot
+                          <Plus className="w-3.5 h-3.5" /> Book Appointment
                         </button>
                       </div>
 
-                      {/* Timeline List */}
-                      <div className="relative pl-0 md:pl-2 space-y-4">
-                        {timelineItems.length === 0 ? (
-                          <div className="border border-dashed border-slate-200 rounded py-12 text-center bg-slate-50/50">
-                            <span className="text-slate-400 font-medium text-xs">
-                              {searchTerm.trim() 
-                                ? `No appointments matching "${searchTerm}" found on this date.`
-                                : "No project appointments planned on this date."}
-                            </span>
-                            <p className="text-slate-450 text-[11px] mt-1.5">
-                              {searchTerm.trim()
-                                ? "Try clearing the search filter or typing a different query."
-                                : "Click \"Create Slot\" above to log your meetings or work milestones instantly."}
-                            </p>
-                          </div>
-                        ) : (
-                          timelineItems.map((item, index) => {
-                            if (item.type === 'appointment' && item.appointment) {
-                              const app = item.appointment;
-                              const job = jobs.find((j) => j.id === app.jobId);
-                              const palette = job ? getColorPalette(job.color) : getColorPalette('indigo');
+                      {/* Grid area */}
+                      <div className="flex overflow-y-auto" style={{ maxHeight: '600px' }}>
+                        {/* Hour labels column */}
+                        <div className="w-16 shrink-0 relative select-none" style={{ height: `${GRID_HEIGHT}px` }}>
+                          {hours.map((h) => (
+                            <div
+                              key={h}
+                              className="absolute w-full flex items-start justify-end pr-2"
+                              style={{ top: `${(h - DAY_START_HOUR) * HOUR_HEIGHT - 8}px`, height: `${HOUR_HEIGHT}px` }}
+                            >
+                              <span className="text-[10px] font-mono text-slate-400 leading-none pt-1">
+                                {h < 10 ? `0${h}` : h}:00
+                              </span>
+                            </div>
+                          ))}
+                        </div>
 
-                              return (
-                                <div key={index} className="flex gap-3 md:gap-5 items-stretch group/timeline">
-                                  {/* Left Time axis column */}
-                                  <div className="w-20 md:w-24 text-right shrink-0 flex flex-col justify-between py-1.5 text-slate-500 font-mono text-[10px] md:text-xs">
-                                    <span className="font-bold text-slate-800">
-                                      {item.startTime.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false })}
-                                    </span>
-                                    <span className="text-[9px] text-slate-400 font-medium bg-slate-50 px-1 py-0.5 rounded border border-slate-100 self-end">
-                                      {formatDuration(item.startTime.toISOString(), item.endTime.toISOString())}
-                                    </span>
-                                    <span className="text-slate-400 font-medium font-sans">
-                                      {item.endTime.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false })}
-                                    </span>
+                        {/* Main grid */}
+                        <div className="flex-1 relative border-l border-slate-100" style={{ height: `${GRID_HEIGHT}px` }}>
+                          {/* Hour lines + 15-min slot lines */}
+                          {hours.slice(0, TOTAL_HOURS).map((h) => (
+                            <div
+                              key={h}
+                              className="absolute w-full"
+                              style={{ top: `${(h - DAY_START_HOUR) * HOUR_HEIGHT}px`, height: `${HOUR_HEIGHT}px` }}
+                            >
+                              {/* Bold hour line */}
+                              <div className="absolute top-0 left-0 w-full border-t border-slate-200" />
+                              {/* 15-min sub-lines */}
+                              {[1, 2, 3].map((q) => (
+                                <div
+                                  key={q}
+                                  className="absolute left-0 w-full border-t border-slate-100"
+                                  style={{ top: `${q * SLOT_HEIGHT}px` }}
+                                />
+                              ))}
+                              {/* Clickable slots */}
+                              {[0, 1, 2, 3].map((q) => (
+                                <div
+                                  key={q}
+                                  className="absolute left-0 w-full hover:bg-indigo-50/40 cursor-pointer transition-colors"
+                                  style={{ top: `${q * SLOT_HEIGHT}px`, height: `${SLOT_HEIGHT}px` }}
+                                  onClick={() => {
+                                    const d = new Date(selectedDate);
+                                    d.setHours(h, q * 15, 0, 0);
+                                    setActiveAppointment(null);
+                                    setInitialDateForCreate(d);
+                                    setIsModalOpen(true);
+                                  }}
+                                />
+                              ))}
+                            </div>
+                          ))}
+
+                          {/* "Now" indicator */}
+                          {nowTop !== null && (
+                            <div
+                              className="absolute left-0 right-0 z-20 flex items-center gap-1 pointer-events-none"
+                              style={{ top: `${nowTop}px` }}
+                            >
+                              <div className="relative w-3 h-3 shrink-0 -ml-1.5 flex items-center justify-center">
+                                <span className="absolute inline-flex h-full w-full rounded-full bg-rose-400 opacity-60 animate-ping" />
+                                <span className="relative inline-flex rounded-full h-2 w-2 bg-rose-600" />
+                              </div>
+                              <div className="flex-1 h-[2px] bg-rose-500 rounded-full" />
+                              <span className="text-[9px] font-bold text-white bg-rose-600 px-1.5 py-0.5 rounded-full mr-2 shrink-0">
+                                {nowLabel}
+                              </span>
+                            </div>
+                          )}
+
+                          {/* Appointment blocks */}
+                          {dayAppointments.map((app) => {
+                            const job = jobs.find((j) => j.id === app.jobId);
+                            const palette = job ? getColorPalette(job.color) : getColorPalette('indigo');
+                            const appStartMs = new Date(app.startTime).getTime();
+                            const appEndMs = new Date(app.endTime).getTime();
+                            const top = msToTop(appStartMs);
+                            const height = msToHeight(appStartMs, appEndMs);
+                            const isUpcoming = appStartMs >= nowMs && appStartMs <= nowMs + 24 * 60 * 60 * 1000;
+                            const isTall = height >= SLOT_HEIGHT * 3;
+
+                            return (
+                              <button
+                                key={app.id}
+                                id={`day-grid-app-${app.id}`}
+                                onClick={() => {
+                                  setActiveAppointment(app);
+                                  setIsModalOpen(true);
+                                }}
+                                className={`absolute left-1 right-1 z-10 rounded border text-left overflow-hidden cursor-pointer transition-all hover:z-30 hover:shadow-md ${palette.bg} ${palette.text} ${
+                                  isUpcoming ? 'border-amber-500 ring-1 ring-amber-400/40' : palette.border
+                                }`}
+                                style={{ top: `${top + 1}px`, height: `${height - 2}px` }}
+                              >
+                                <div className="px-1.5 py-0.5 h-full flex flex-col justify-start overflow-hidden">
+                                  <div className="flex items-center gap-1 leading-tight">
+                                    {isUpcoming && <span className="text-amber-500 text-[10px]">⚡</span>}
+                                    {app.reminder && <Bell className="w-2.5 h-2.5 text-amber-500 shrink-0" />}
+                                    {app.recurrenceGroupId && <span className="text-[9px] opacity-60">↺</span>}
+                                    <span className="text-[10px] font-semibold truncate leading-tight">{app.title}</span>
                                   </div>
-
-                                  {/* Vertical continuous axis line */}
-                                  <div className="flex flex-col items-center shrink-0">
-                                    <div className="w-3.5 h-3.5 rounded-full border-2 border-slate-800 bg-slate-800 flex items-center justify-center transition-all scale-105 shadow-xs shadow-slate-100 mt-2">
-                                      <div className="w-1.5 h-1.5 rounded-full bg-white" />
-                                    </div>
-                                    <div className="w-[1.5px] bg-slate-200 grow my-2" />
-                                  </div>
-
-                                  {/* Right Content Block (Appointment Card) */}
-                                  <div className="flex-1 pb-4">
-                                    {(() => {
-                                      const nowMs = new Date().getTime();
-                                      const appStartMs = new Date(app.startTime).getTime();
-                                      const isUpcoming = appStartMs >= nowMs && appStartMs <= nowMs + 24 * 60 * 60 * 1000;
-
-                                      return (
-                                        <div
-                                          id={`day-row-${app.id}`}
-                                          className={`border rounded p-4 flex flex-col md:flex-row md:items-center justify-between gap-4 transition-all hover:shadow-2xs ${
-                                            isUpcoming ? 'border-amber-500 ring-2 ring-amber-400/25 shadow-md shadow-amber-500/10' : palette.border
-                                          } ${palette.bg}`}
-                                        >
-                                          <div className="space-y-1.5 flex-1">
-                                            <div className="flex items-center gap-2 flex-wrap">
-                                              <span className={`text-[9px] font-bold uppercase tracking-wider px-2 py-0.5 rounded border ${palette.badge}`}>
-                                                {job ? job.clientName : 'Client Specified'}
-                                              </span>
-                                              {isUpcoming && (
-                                                <span className="text-[9px] font-bold uppercase tracking-wider px-2 py-0.5 rounded border bg-amber-500 border-amber-500 text-white flex items-center gap-1">
-                                                  ⚡ NEXT 24H
-                                                </span>
-                                              )}
-                                              <span className="text-xs font-mono font-bold text-slate-500 flex items-center gap-1">
-                                                <Clock className="w-3.5 h-3.5 text-slate-400" />
-                                                {new Date(app.startTime).toLocaleTimeString('en-US', {
-                                                  hour: 'numeric',
-                                                  minute: '2-digit',
-                                                  hour12: false,
-                                                })}
-                                                &mdash;
-                                                {new Date(app.endTime).toLocaleTimeString('en-US', {
-                                                  hour: 'numeric',
-                                                  minute: '2-digit',
-                                                  hour12: false,
-                                                })}
-                                              </span>
-                                            </div>
-                                            <h4 className="text-sm font-bold text-slate-800 leading-snug">{app.title}</h4>
-                                            
-                                            {app.location && (
-                                              <p className="text-slate-605 text-xs flex items-center gap-1">
-                                                <MapPin className="w-3 h-3 text-slate-400" /> {app.location}
-                                              </p>
-                                            )}
-
-                                            {app.notes && (
-                                              <p className="text-slate-500 text-xs pl-2 border-l border-slate-350 italic">
-                                                {app.notes}
-                                              </p>
-                                            )}
-                                          </div>
-
-                                          {/* Actions on this item */}
-                                          <div className="flex flex-wrap items-center gap-2 shrink-0">
-                                            <div className="flex gap-1 bg-white/70 rounded p-1 border border-slate-205">
-                                              {app.reminder && (
-                                                <span 
-                                                  className="px-1.5 py-0.5 text-[9px] rounded font-bold uppercase bg-amber-100 text-amber-700 flex items-center gap-0.5"
-                                                  title="Reminder Active"
-                                                >
-                                                  <Bell className="w-2.5 h-2.5 text-amber-600 animate-pulse" /> Reminder
-                                                </span>
-                                              )}
-                                              {app.recurrenceGroupId && (
-                                                <span 
-                                                  className="px-1.5 py-0.5 text-[9px] rounded font-bold uppercase bg-slate-100 text-slate-700 flex items-center gap-0.5"
-                                                  title="Recurring Series Item"
-                                                >
-                                                  🔄 Recurring
-                                                </span>
-                                              )}
-                                              <span 
-                                                className={`px-1.5 py-0.5 text-[9px] rounded font-bold uppercase ${
-                                                  app.syncedGoogle ? 'bg-blue-100 text-blue-700' : 'bg-slate-100 text-slate-400'
-                                                }`}
-                                                title="Google Sync Tag"
-                                              >
-                                                Google
-                                              </span>
-                                              <span 
-                                                className={`px-1.5 py-0.5 text-[9px] rounded font-bold uppercase ${
-                                                  app.syncedOutlook ? 'bg-sky-100 text-sky-700' : 'bg-slate-100 text-slate-400'
-                                                }`}
-                                                title="Outlook Sync Tag"
-                                              >
-                                                Outlook
-                                              </span>
-                                            </div>
-
-                                            <button
-                                              id={`edit-app-day-${app.id}`}
-                                              onClick={() => {
-                                                setActiveAppointment(app);
-                                                setIsModalOpen(true);
-                                              }}
-                                              className="bg-white hover:bg-slate-50 text-slate-750 px-3 py-1.5 rounded text-xs font-semibold border border-slate-200 transition-all cursor-pointer"
-                                            >
-                                              Modify / Edit
-                                            </button>
-                                          </div>
-                                        </div>
-                                      );
-                                    })()}
-                                  </div>
+                                  {isTall && job && (
+                                    <span className="text-[9px] opacity-80 truncate">{job.clientName}</span>
+                                  )}
+                                  {isTall && (
+                                    <span className="text-[9px] opacity-70 font-mono mt-auto">
+                                      {new Date(app.startTime).toLocaleTimeString('en-AU', { hour: '2-digit', minute: '2-digit', hour12: false })}
+                                      {' – '}
+                                      {new Date(app.endTime).toLocaleTimeString('en-AU', { hour: '2-digit', minute: '2-digit', hour12: false })}
+                                    </span>
+                                  )}
                                 </div>
-                              );
-                            } else if (item.type === 'now') {
-                              return (
-                                <div key={index} className="flex gap-3 md:gap-5 items-center relative -my-2 z-10">
-                                  {/* Left Time axis column */}
-                                  <div className="w-20 md:w-24 text-right shrink-0 text-rose-600 font-mono text-[10px] md:text-xs font-bold">
-                                    {item.startTime.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false })}
-                                  </div>
-
-                                  {/* Pulsing "now" dot on the axis */}
-                                  <div className="flex flex-col items-center shrink-0">
-                                    <div className="relative w-3.5 h-3.5 flex items-center justify-center">
-                                      <span className="absolute inline-flex h-full w-full rounded-full bg-rose-400 opacity-75 animate-ping" />
-                                      <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-rose-600 border-2 border-white" />
-                                    </div>
-                                  </div>
-
-                                  {/* Horizontal "now" line across the content area */}
-                                  <div className="flex-1 flex items-center gap-2">
-                                    <div className="h-[2px] bg-rose-500 flex-1 rounded-full" />
-                                    <span className="text-[9px] font-bold uppercase tracking-wider text-white bg-rose-600 px-2 py-0.5 rounded-full shrink-0">
-                                      Now
-                                    </span>
-                                  </div>
-                                </div>
-                              );
-                            } else {
-                              // Type is gap
-                              return (
-                                <div key={index} className="flex gap-3 md:gap-5 items-stretch group/timeline">
-                                  {/* Left Time axis column */}
-                                  <div className="w-20 md:w-24 text-right shrink-0 flex flex-col justify-between py-1.5 text-slate-400 font-mono text-[10px] md:text-xs">
-                                    <span className="font-semibold text-slate-500">
-                                      {item.startTime.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false })}
-                                    </span>
-                                    <span className="text-[9px] text-slate-400 font-medium bg-slate-100/50 px-1 py-0.5 rounded border border-slate-200/50 self-end">
-                                      {formatDuration(item.startTime.toISOString(), item.endTime.toISOString())}
-                                    </span>
-                                    <span className="text-slate-400 font-sans">
-                                      {item.endTime.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false })}
-                                    </span>
-                                  </div>
-
-                                  {/* Vertical continuous axis line */}
-                                  <div className="flex flex-col items-center shrink-0">
-                                    <div className="w-3.5 h-3.5 rounded-full border border-slate-300 bg-white flex items-center justify-center transition-all mt-2 group-hover/timeline:border-slate-800">
-                                      <div className="w-1.5 h-1.5 rounded-full bg-slate-200 group-hover/timeline:bg-slate-800" />
-                                    </div>
-                                    <div className="w-[1.5px] bg-slate-200 grow my-2" />
-                                  </div>
-
-                                  {/* Right Content Block (Gap block) */}
-                                  <div className="flex-1 pb-4">
-                                    <div className="border border-dashed border-slate-200 hover:border-slate-350 rounded p-4 bg-slate-50/20 hover:bg-slate-50/40 flex flex-col sm:flex-row sm:items-center justify-between gap-4 transition-all group/gap">
-                                      <div>
-                                        <div className="flex items-center gap-2 mb-1.5">
-                                          <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider bg-slate-100/80 px-2 py-0.5 rounded border border-slate-200">
-                                            Available Space
-                                          </span>
-                                          <span className="text-[11px] text-slate-450 font-medium font-sans">
-                                            ({formatDuration(item.startTime.toISOString(), item.endTime.toISOString())} gap)
-                                          </span>
-                                        </div>
-                                        <h4 className="text-[11px] text-slate-500 font-normal leading-relaxed">
-                                          Continuous open calendar slot. Ready for booking client sessions or contracting milestones.
-                                        </h4>
-                                      </div>
-                                      
-                                      <button
-                                        type="button"
-                                        onClick={() => {
-                                          setActiveAppointment(null);
-                                          setInitialDateForCreate(item.startTime);
-                                          setIsModalOpen(true);
-                                        }}
-                                        className="px-3 py-1.5 bg-white text-slate-700 hover:bg-slate-50 hover:text-slate-900 border border-slate-200 rounded text-xs font-semibold transition-all cursor-pointer flex items-center gap-1.5 self-start sm:self-center"
-                                      >
-                                        <PlusCircle className="w-3.5 h-3.5 text-slate-500 group-hover/gap:text-slate-800" />
-                                        Fill Gap
-                                      </button>
-                                    </div>
-                                  </div>
-                                </div>
-                              );
-                            }
-                          })
-                        )}
+                              </button>
+                            );
+                          })}
+                        </div>
                       </div>
                     </div>
                   );
