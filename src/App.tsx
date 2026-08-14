@@ -127,6 +127,7 @@ export default function App({ userId, userEmail, onLogout }: AppProps) {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [activeAppointment, setActiveAppointment] = useState<Appointment | null>(null);
   const [initialDateForCreate, setInitialDateForCreate] = useState<Date | null>(null);
+  const [quickPreview, setQuickPreview] = useState<{ app: Appointment; x: number; y: number } | null>(null);
 
   // Sync back to localStorage
   useEffect(() => {
@@ -718,113 +719,155 @@ export default function App({ userId, userEmail, onLogout }: AppProps) {
                   </div>
                 )}
 
-                {/* 2. WEEK VIEW */}
-                {view === 'week' && (
-                  <div className="grid grid-cols-1 md:grid-cols-7 gap-3">
-                    {weekDates.map((day, dIdx) => {
-                      const isToday = day.toDateString() === new Date().toDateString();
-                      const dayApps = getDayAppointments(day);
+                {/* 2. WEEK VIEW — Outlook-style 15-min time grid */}
+                {view === 'week' && (() => {
+                  const SLOT_HEIGHT = 16;
+                  const HOUR_HEIGHT = SLOT_HEIGHT * 4;
+                  const DAY_START_HOUR = 7;
+                  const DAY_END_HOUR = 21;
+                  const TOTAL_HOURS = DAY_END_HOUR - DAY_START_HOUR;
+                  const GRID_HEIGHT = TOTAL_HOURS * HOUR_HEIGHT;
+                  const hours = Array.from({ length: TOTAL_HOURS + 1 }, (_, i) => DAY_START_HOUR + i);
+                  const nowMs = Date.now();
+                  const todayStr = new Date().toDateString();
 
-                      return (
-                        <div
-                          id={`week-col-${day.getDate()}`}
-                          key={dIdx}
-                          className={`border rounded p-3 flex flex-col bg-white min-h-[250px] ${
-                            isToday ? 'border-slate-800 bg-slate-100/30' : 'border-slate-200'
-                          }`}
-                        >
-                          <div className="border-b border-slate-100 pb-2 mb-3 flex items-center justify-between">
-                            <div>
+                  const msToTop = (ms: number, dayStart: number) => {
+                    const clipped = Math.max(dayStart, Math.min(dayStart + TOTAL_HOURS * 3600000, ms));
+                    return ((clipped - dayStart) / (1000 * 60 * 15)) * SLOT_HEIGHT;
+                  };
+                  const msToHeight = (startMs: number, endMs: number, dayStart: number) => {
+                    const top = msToTop(startMs, dayStart);
+                    const bot = msToTop(endMs, dayStart);
+                    return Math.max(SLOT_HEIGHT, bot - top);
+                  };
+
+                  return (
+                    <div className="bg-white border border-slate-200 rounded overflow-hidden">
+                      {/* Day header row */}
+                      <div className="flex border-b border-slate-200 bg-slate-50">
+                        <div className="w-16 shrink-0 border-r border-slate-100" />
+                        {weekDates.map((day, dIdx) => {
+                          const isToday = day.toDateString() === todayStr;
+                          return (
+                            <div key={dIdx} className={`flex-1 text-center py-2 border-r border-slate-100 last:border-r-0 ${isToday ? 'bg-indigo-50' : ''}`}>
                               <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
-                                {day.toLocaleDateString('en-US', { weekday: 'short' })}
+                                {day.toLocaleDateString('en-AU', { weekday: 'short' })}
                               </p>
-                              <p className="text-xs font-bold text-slate-800 font-mono mt-0.5">
-                                {day.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                              <p className={`text-sm font-bold font-mono mt-0.5 ${isToday ? 'text-indigo-600' : 'text-slate-800'}`}>
+                                {day.getDate()}
                               </p>
                             </div>
-                            <button
-                              id={`week-add-${day.getDate()}`}
-                              onClick={() => {
-                                setActiveAppointment(null);
-                                setInitialDateForCreate(day);
-                                setIsModalOpen(true);
-                              }}
-                              className="text-slate-400 hover:text-slate-900 p-1 rounded transition-colors cursor-pointer"
-                              title="Add calendar slot"
-                            >
-                              <Plus className="w-3.5 h-3.5" />
-                            </button>
-                          </div>
+                          );
+                        })}
+                      </div>
 
-                          <div className="space-y-2 flex-1 overflow-y-auto">
-                            {dayApps.length === 0 ? (
-                              <span className="text-[10px] text-slate-400 block text-center py-6 italic">No visits.</span>
-                            ) : (
-                              dayApps.map((app) => {
+                      {/* Scrollable grid */}
+                      <div className="flex overflow-y-auto" style={{ maxHeight: '560px' }}>
+                        {/* Hour labels */}
+                        <div className="w-16 shrink-0 relative border-r border-slate-100" style={{ height: `${GRID_HEIGHT}px` }}>
+                          {hours.map((h) => (
+                            <div key={h} className="absolute w-full flex justify-end pr-2"
+                              style={{ top: `${(h - DAY_START_HOUR) * HOUR_HEIGHT - 8}px` }}>
+                              <span className="text-[10px] font-mono text-slate-400">
+                                {h < 10 ? `0${h}` : h}:00
+                              </span>
+                            </div>
+                          ))}
+                        </div>
+
+                        {/* Day columns */}
+                        {weekDates.map((day, dIdx) => {
+                          const isToday = day.toDateString() === todayStr;
+                          const dayStart = new Date(day); dayStart.setHours(DAY_START_HOUR, 0, 0, 0);
+                          const dayStartMs = dayStart.getTime();
+                          const dayApps = getDayAppointments(day);
+                          const nowTop = isToday && nowMs >= dayStartMs && nowMs <= dayStartMs + TOTAL_HOURS * 3600000
+                            ? msToTop(nowMs, dayStartMs) : null;
+
+                          return (
+                            <div key={dIdx} className={`flex-1 relative border-r border-slate-100 last:border-r-0 ${isToday ? 'bg-indigo-50/20' : ''}`}
+                              style={{ height: `${GRID_HEIGHT}px` }}>
+
+                              {/* Hour + slot lines */}
+                              {hours.slice(0, TOTAL_HOURS).map((h) => (
+                                <div key={h} className="absolute w-full" style={{ top: `${(h - DAY_START_HOUR) * HOUR_HEIGHT}px`, height: `${HOUR_HEIGHT}px` }}>
+                                  <div className="absolute top-0 left-0 w-full border-t border-slate-200" />
+                                  {[1, 2, 3].map((q) => (
+                                    <div key={q} className="absolute left-0 w-full border-t border-slate-100"
+                                      style={{ top: `${q * SLOT_HEIGHT}px` }} />
+                                  ))}
+                                  {/* Clickable 15-min slots */}
+                                  {[0, 1, 2, 3].map((q) => (
+                                    <div key={q}
+                                      className="absolute left-0 w-full hover:bg-indigo-100/50 cursor-pointer transition-colors"
+                                      style={{ top: `${q * SLOT_HEIGHT}px`, height: `${SLOT_HEIGHT}px` }}
+                                      onClick={() => {
+                                        const d = new Date(day);
+                                        d.setHours(h, q * 15, 0, 0);
+                                        setQuickPreview(null);
+                                        setActiveAppointment(null);
+                                        setInitialDateForCreate(d);
+                                        setIsModalOpen(true);
+                                      }} />
+                                  ))}
+                                </div>
+                              ))}
+
+                              {/* Now indicator */}
+                              {nowTop !== null && (
+                                <div className="absolute left-0 right-0 z-20 flex items-center pointer-events-none"
+                                  style={{ top: `${nowTop}px` }}>
+                                  <div className="relative w-2.5 h-2.5 shrink-0 -ml-1.5 flex items-center justify-center">
+                                    <span className="absolute inline-flex h-full w-full rounded-full bg-rose-400 opacity-60 animate-ping" />
+                                    <span className="relative inline-flex rounded-full h-2 w-2 bg-rose-600" />
+                                  </div>
+                                  <div className="flex-1 h-[2px] bg-rose-500 rounded-full" />
+                                </div>
+                              )}
+
+                              {/* Appointment blocks */}
+                              {dayApps.map((app) => {
                                 const job = jobs.find((j) => j.id === app.jobId);
                                 const palette = job ? getColorPalette(job.color) : getColorPalette('indigo');
-                                const nowMs = new Date().getTime();
                                 const appStartMs = new Date(app.startTime).getTime();
-                                const isUpcoming = appStartMs >= nowMs && appStartMs <= nowMs + 24 * 60 * 60 * 1000;
+                                const appEndMs = new Date(app.endTime).getTime();
+                                const top = msToTop(appStartMs, dayStartMs);
+                                const height = msToHeight(appStartMs, appEndMs, dayStartMs);
+                                const isUpcoming = appStartMs >= nowMs && appStartMs <= nowMs + 86400000;
+                                const isTall = height >= SLOT_HEIGHT * 2;
 
                                 return (
-                                  <button
-                                    id={`week-app-card-${app.id}`}
-                                    key={app.id}
-                                    onClick={() => {
-                                      setActiveAppointment(app);
-                                      setIsModalOpen(true);
+                                  <button key={app.id}
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+                                      setQuickPreview({ app, x: rect.left, y: rect.bottom + 6 });
                                     }}
-                                    className={`w-full text-left p-2.5 rounded border text-xs flex flex-col justify-between leading-snug transition-all hover:scale-[1.01] cursor-pointer relative overflow-hidden ${palette.bg} ${palette.text} ${
-                                      isUpcoming ? 'border-amber-500 ring-2 ring-amber-400/25 shadow-md shadow-amber-500/10' : palette.border
-                                    }`}
-                                  >
-                                    <div className="w-full">
-                                      <div className="flex items-start justify-between gap-1">
-                                        <span className="font-semibold truncate leading-tight flex items-center gap-1">
-                                          {isUpcoming && <span className="text-amber-500 font-bold" title="Starts in next 24h">⚡</span>}
-                                          {app.title}
-                                          {app.recurrenceGroupId && <span className="text-[10px] text-slate-500 font-bold" title="Recurring appointment">↺</span>}
-                                        </span>
-                                        {app.reminder && (
-                                          <Bell className="w-3 h-3 text-amber-500 animate-bounce shrink-0" title="Reminder Active" />
-                                        )}
-                                      </div>
-                                      {job && (
-                                        <div className="flex items-center justify-between mt-0.5">
-                                          <span className="text-[9px] opacity-90 block tracking-tight font-medium truncate">{job.clientName}</span>
-                                          {isUpcoming && (
-                                            <span className="text-[8px] font-bold uppercase tracking-wide text-amber-600 bg-amber-50 rounded px-1.5 py-0.5 border border-amber-200 shrink-0">
-                                              Next 24h
-                                            </span>
-                                          )}
-                                        </div>
+                                    className={`absolute left-0.5 right-0.5 z-10 rounded border text-left overflow-hidden cursor-pointer transition-all hover:z-30 hover:shadow-md ${palette.bg} ${palette.text} ${isUpcoming ? 'border-amber-500 ring-1 ring-amber-400/40' : palette.border}`}
+                                    style={{ top: `${top + 1}px`, height: `${height - 2}px` }}>
+                                    <div className="px-1 py-0.5 h-full flex flex-col overflow-hidden">
+                                      <span className="text-[9px] font-semibold truncate leading-tight">
+                                        {isUpcoming && '⚡'}{app.title}
+                                      </span>
+                                      {isTall && job && (
+                                        <span className="text-[8px] opacity-75 truncate">{job.clientName}</span>
                                       )}
-                                    </div>
-
-                                    <div className="mt-2 pt-1.5 border-t border-slate-200/40 text-[9px] opacity-85 flex justify-between items-center font-mono">
-                                      <span className="flex items-center gap-0.5 text-slate-600">
-                                        <Clock className="w-2.5 h-2.5 text-slate-450" />
-                                        {new Date(app.startTime).toLocaleTimeString('en-US', {
-                                          hour: 'numeric',
-                                          minute: '2-digit',
-                                          hour12: false,
-                                        })}
-                                      </span>
-                                      <span className="font-medium text-[8px] bg-white px-1 py-0.5 rounded border border-slate-200 text-slate-700">
-                                        {formatDuration(app.startTime, app.endTime)}
-                                      </span>
+                                      {isTall && (
+                                        <span className="text-[8px] opacity-70 font-mono mt-auto">
+                                          {new Date(app.startTime).toLocaleTimeString('en-AU', { hour: '2-digit', minute: '2-digit', hour12: false })}
+                                        </span>
+                                      )}
                                     </div>
                                   </button>
                                 );
-                              })
-                            )}
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                )}
+                              })}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  );
+                })()}
 
                 {/* 3. DAY VIEW — Outlook-style 15-min grid */}
                 {view === 'day' && (() => {
@@ -972,9 +1015,10 @@ export default function App({ userId, userEmail, onLogout }: AppProps) {
                               <button
                                 key={app.id}
                                 id={`day-grid-app-${app.id}`}
-                                onClick={() => {
-                                  setActiveAppointment(app);
-                                  setIsModalOpen(true);
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+                                  setQuickPreview({ app, x: rect.left, y: rect.bottom + 6 });
                                 }}
                                 className={`absolute left-1 right-1 z-10 rounded border text-left overflow-hidden cursor-pointer transition-all hover:z-30 hover:shadow-md ${palette.bg} ${palette.text} ${
                                   isUpcoming ? 'border-amber-500 ring-1 ring-amber-400/40' : palette.border
@@ -1010,6 +1054,80 @@ export default function App({ userId, userEmail, onLogout }: AppProps) {
               </motion.div>
             </AnimatePresence>
           </section>
+
+          {/* Quick Preview Popup */}
+          {quickPreview && (() => {
+            const { app, x, y } = quickPreview;
+            const job = jobs.find((j) => j.id === app.jobId);
+            const palette = job ? getColorPalette(job.color) : getColorPalette('indigo');
+            return (
+              <>
+                {/* Click-away backdrop */}
+                <div className="fixed inset-0 z-40" onClick={() => setQuickPreview(null)} />
+                <div
+                  className="fixed z-50 w-72 bg-white border border-slate-200 rounded-xl shadow-xl p-4 space-y-3"
+                  style={{ left: Math.min(x, window.innerWidth - 300), top: Math.min(y, window.innerHeight - 220) }}
+                >
+                  {/* Header */}
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="flex-1 min-w-0">
+                      <span className={`text-[9px] font-bold uppercase tracking-wider px-2 py-0.5 rounded border ${palette.badge} inline-block mb-1`}>
+                        {job?.clientName ?? 'No client'}
+                      </span>
+                      <h3 className="text-sm font-bold text-slate-900 leading-snug">{app.title}</h3>
+                    </div>
+                    <button onClick={() => setQuickPreview(null)} className="text-slate-400 hover:text-slate-700 shrink-0 cursor-pointer">
+                      <X className="w-4 h-4" />
+                    </button>
+                  </div>
+                  {/* Time */}
+                  <div className="flex items-center gap-1.5 text-xs text-slate-600">
+                    <Clock className="w-3.5 h-3.5 text-slate-400" />
+                    {new Date(app.startTime).toLocaleTimeString('en-AU', { hour: '2-digit', minute: '2-digit', hour12: false })}
+                    {' – '}
+                    {new Date(app.endTime).toLocaleTimeString('en-AU', { hour: '2-digit', minute: '2-digit', hour12: false })}
+                    <span className="ml-1 text-[10px] text-slate-400">({formatDuration(app.startTime, app.endTime)})</span>
+                  </div>
+                  {/* Location */}
+                  {app.location && (
+                    <div className="flex items-center gap-1.5 text-xs text-slate-600">
+                      <MapPin className="w-3.5 h-3.5 text-slate-400" />
+                      {app.location}
+                    </div>
+                  )}
+                  {/* Notes */}
+                  {app.notes && (
+                    <p className="text-xs text-slate-500 italic border-l-2 border-slate-200 pl-2">{app.notes}</p>
+                  )}
+                  {/* Status + flags */}
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className={`text-[9px] font-bold uppercase tracking-wider px-2 py-0.5 rounded border ${
+                      app.status === 'completed' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' :
+                      app.status === 'cancelled' ? 'bg-rose-50 text-rose-700 border-rose-200' :
+                      'bg-blue-50 text-blue-700 border-blue-200'
+                    }`}>{app.status}</span>
+                    {app.recurrenceGroupId && <span className="text-[9px] text-slate-500 font-bold">↺ Recurring</span>}
+                    {app.reminder && <span className="text-[9px] text-amber-600 font-bold flex items-center gap-0.5"><Bell className="w-3 h-3" /> Reminder</span>}
+                  </div>
+                  {/* Actions */}
+                  <div className="flex gap-2 pt-1 border-t border-slate-100">
+                    <button
+                      onClick={() => { setQuickPreview(null); setActiveAppointment(app); setIsModalOpen(true); }}
+                      className="flex-1 text-xs font-semibold bg-slate-900 text-white rounded-lg py-1.5 hover:bg-slate-700 transition-colors cursor-pointer"
+                    >
+                      Edit
+                    </button>
+                    <button
+                      onClick={() => { setQuickPreview(null); handleDeleteAppointment(app.id); }}
+                      className="px-3 text-xs font-semibold border border-rose-200 text-rose-600 rounded-lg py-1.5 hover:bg-rose-50 transition-colors cursor-pointer"
+                    >
+                      Delete
+                    </button>
+                  </div>
+                </div>
+              </>
+            );
+          })()}
 
           {/* Contracting Job Manager widget (Right Sidebar Column) */}
           <aside className="lg:col-span-1 space-y-4">
