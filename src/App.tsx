@@ -816,7 +816,10 @@ export default function App({ userId, userEmail, onLogout }: AppProps) {
                                 const top = msToTop(appStartMs, dayStartMs);
                                 const height = msToHeight(appStartMs, appEndMs, dayStartMs);
                                 const isUpcoming = appStartMs >= nowMs && appStartMs <= nowMs + 86400000;
-                                const isTall = height >= SLOT_HEIGHT * 2;
+                                const isMedium = height >= SLOT_HEIGHT * 3;  // ≥45min
+                                const isTall   = height >= SLOT_HEIGHT * 5;  // ≥75min
+                                const isVTall  = height >= SLOT_HEIGHT * 8;  // ≥2hrs
+                                const timeStr  = new Date(app.startTime).toLocaleTimeString('en-AU', { hour: 'numeric', minute: '2-digit', hour12: true }).toLowerCase();
 
                                 return (
                                   <button key={app.id}
@@ -825,19 +828,31 @@ export default function App({ userId, userEmail, onLogout }: AppProps) {
                                       const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
                                       setQuickPreview({ app, x: rect.left, y: rect.bottom + 6 });
                                     }}
-                                    className={`absolute left-0.5 right-0.5 z-10 rounded border text-left overflow-hidden cursor-pointer transition-all hover:z-30 hover:shadow-md ${palette.bg} ${palette.text} ${isUpcoming ? 'border-amber-500 ring-1 ring-amber-400/40' : palette.border}`}
+                                    className={`absolute left-0.5 right-0.5 z-10 rounded border text-left overflow-hidden cursor-pointer transition-all hover:z-30 hover:shadow-lg ${palette.bg} ${palette.text} ${isUpcoming ? 'border-amber-500 ring-1 ring-amber-400/40' : palette.border} ${app.status === 'cancelled' ? 'opacity-60' : ''}`}
                                     style={{ top: `${top + 1}px`, height: `${height - 2}px` }}>
-                                    <div className="px-1 py-0.5 h-full flex flex-col overflow-hidden">
-                                      <span className="text-[9px] font-semibold truncate leading-tight">
-                                        {isUpcoming && '⚡'}{app.title}
-                                      </span>
-                                      {isTall && job && (
-                                        <span className="text-[8px] opacity-75 truncate">{job.clientName}</span>
+                                    {/* Left colour accent bar */}
+                                    <div className={`absolute left-0 top-0 bottom-0 w-1 ${palette.border.replace('border-', 'bg-')} opacity-70`} />
+                                    <div className="pl-2 pr-1 pt-0.5 pb-0.5 h-full flex flex-col overflow-hidden">
+                                      {/* Client name — always shown */}
+                                      <p className={`text-[10px] font-bold leading-tight truncate ${app.status === 'cancelled' ? 'line-through opacity-60' : ''}`}>
+                                        {isUpcoming && <span className="text-amber-500 mr-0.5">⚡</span>}
+                                        {job ? job.clientName : app.title}
+                                        {app.reminder && <Bell className="w-2.5 h-2.5 inline ml-1 text-amber-500" />}
+                                        {app.recurrenceGroupId && <span className="ml-1 opacity-50 text-[8px]">↺</span>}
+                                      </p>
+                                      {/* Time — shown when medium+ */}
+                                      {isMedium && (
+                                        <p className="text-[9px] opacity-80 leading-tight mt-0.5">{timeStr}</p>
                                       )}
+                                      {/* Appointment title (service type) */}
                                       {isTall && (
-                                        <span className="text-[8px] opacity-70 font-mono mt-auto">
-                                          {new Date(app.startTime).toLocaleTimeString('en-AU', { hour: '2-digit', minute: '2-digit', hour12: false })}
-                                        </span>
+                                        <p className={`text-[9px] opacity-80 leading-snug mt-0.5 ${app.status === 'cancelled' ? 'line-through' : ''}`}>
+                                          {app.title}
+                                        </p>
+                                      )}
+                                      {/* Notes */}
+                                      {isVTall && app.notes && (
+                                        <p className="text-[9px] opacity-60 leading-snug mt-1 italic line-clamp-2">{app.notes}</p>
                                       )}
                                     </div>
                                   </button>
@@ -991,7 +1006,11 @@ export default function App({ userId, userEmail, onLogout }: AppProps) {
                             const top = msToTop(appStartMs);
                             const height = msToHeight(appStartMs, appEndMs);
                             const isUpcoming = appStartMs >= nowMs && appStartMs <= nowMs + 24 * 60 * 60 * 1000;
-                            const isTall = height >= SLOT_HEIGHT * 3;
+                            const isMedium = height >= SLOT_HEIGHT * 3;
+                            const isTall   = height >= SLOT_HEIGHT * 5;
+                            const isVTall  = height >= SLOT_HEIGHT * 8;
+                            const timeStr  = new Date(app.startTime).toLocaleTimeString('en-AU', { hour: 'numeric', minute: '2-digit', hour12: true }).toLowerCase();
+                            const endStr   = new Date(app.endTime).toLocaleTimeString('en-AU', { hour: 'numeric', minute: '2-digit', hour12: true }).toLowerCase();
 
                             return (
                               <button
@@ -1002,27 +1021,34 @@ export default function App({ userId, userEmail, onLogout }: AppProps) {
                                   const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
                                   setQuickPreview({ app, x: rect.left, y: rect.bottom + 6 });
                                 }}
-                                className={`absolute left-1 right-1 z-10 rounded border text-left overflow-hidden cursor-pointer transition-all hover:z-30 hover:shadow-md ${palette.bg} ${palette.text} ${
+                                className={`absolute left-1 right-1 z-10 rounded border text-left overflow-hidden cursor-pointer transition-all hover:z-30 hover:shadow-lg ${palette.bg} ${palette.text} ${
                                   isUpcoming ? 'border-amber-500 ring-1 ring-amber-400/40' : palette.border
-                                }`}
+                                } ${app.status === 'cancelled' ? 'opacity-60' : ''}`}
                                 style={{ top: `${top + 1}px`, height: `${height - 2}px` }}
                               >
-                                <div className="px-1.5 py-0.5 h-full flex flex-col justify-start overflow-hidden">
-                                  <div className="flex items-center gap-1 leading-tight">
-                                    {isUpcoming && <span className="text-amber-500 text-[10px]">⚡</span>}
-                                    {app.reminder && <Bell className="w-2.5 h-2.5 text-amber-500 shrink-0" />}
-                                    {app.recurrenceGroupId && <span className="text-[9px] opacity-60">↺</span>}
-                                    <span className="text-[10px] font-semibold truncate leading-tight">{app.title}</span>
-                                  </div>
-                                  {isTall && job && (
-                                    <span className="text-[9px] opacity-80 truncate">{job.clientName}</span>
+                                {/* Left accent bar */}
+                                <div className={`absolute left-0 top-0 bottom-0 w-1.5 ${palette.border.replace('border-', 'bg-')} opacity-70`} />
+                                <div className="pl-3 pr-2 pt-1 pb-1 h-full flex flex-col overflow-hidden">
+                                  {/* Client name */}
+                                  <p className={`text-[11px] font-bold leading-tight truncate ${app.status === 'cancelled' ? 'line-through opacity-60' : ''}`}>
+                                    {isUpcoming && <span className="text-amber-500 mr-0.5">⚡</span>}
+                                    {job ? job.clientName : app.title}
+                                    {app.reminder && <Bell className="w-2.5 h-2.5 inline ml-1 text-amber-500" />}
+                                    {app.recurrenceGroupId && <span className="ml-1 opacity-50 text-[9px]">↺</span>}
+                                  </p>
+                                  {/* Time */}
+                                  {isMedium && (
+                                    <p className="text-[10px] opacity-80 leading-tight mt-0.5">{timeStr} – {endStr}</p>
                                   )}
+                                  {/* Service/title */}
                                   {isTall && (
-                                    <span className="text-[9px] opacity-70 font-mono mt-auto">
-                                      {new Date(app.startTime).toLocaleTimeString('en-AU', { hour: '2-digit', minute: '2-digit', hour12: false })}
-                                      {' – '}
-                                      {new Date(app.endTime).toLocaleTimeString('en-AU', { hour: '2-digit', minute: '2-digit', hour12: false })}
-                                    </span>
+                                    <p className={`text-[10px] opacity-80 leading-snug mt-1 ${app.status === 'cancelled' ? 'line-through' : ''}`}>
+                                      {app.title}
+                                    </p>
+                                  )}
+                                  {/* Notes */}
+                                  {isVTall && app.notes && (
+                                    <p className="text-[9px] opacity-60 leading-snug mt-1 italic line-clamp-3">{app.notes}</p>
                                   )}
                                 </div>
                               </button>
