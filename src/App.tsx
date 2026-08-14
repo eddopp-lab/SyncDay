@@ -610,103 +610,85 @@ export default function App({ userId, userEmail, onLogout }: AppProps) {
                             const isCurrentMonth = day.getMonth() === selectedDate.getMonth();
                             const isToday = day.toDateString() === new Date().toDateString();
                             const dayApps = getDayAppointments(day);
+                            const MAX_VISIBLE = 4;
 
                             return (
                               <div
                                 id={`calendar-day-${day.getFullYear()}-${day.getMonth() + 1}-${day.getDate()}`}
                                 key={dIdx}
-                                className={`min-h-[100px] border-r border-b border-slate-200 p-2 flex flex-col justify-between transition-colors relative group ${
+                                className={`min-h-[120px] border-r border-b border-slate-200 p-1.5 flex flex-col transition-colors relative group ${
                                   isCurrentMonth ? 'bg-white' : 'bg-slate-50/50 text-slate-400'
-                                } ${isToday ? 'bg-slate-100/50 font-semibold' : ''}`}
+                                } ${isToday ? 'bg-blue-50/40' : ''}`}
                               >
-                                <div className="flex justify-between items-center mb-1">
+                                {/* Date number + add button */}
+                                <div className="flex justify-between items-center mb-1.5">
                                   <span
-                                    className={`text-xs font-bold font-mono rounded-full w-5 h-5 flex items-center justify-center ${
+                                    className={`text-xs font-bold font-mono rounded-full w-6 h-6 flex items-center justify-center ${
                                       isToday
-                                        ? 'bg-slate-900 text-white'
+                                        ? 'bg-indigo-600 text-white'
                                         : isCurrentMonth
                                         ? 'text-slate-700'
-                                        : 'text-slate-450'
+                                        : 'text-slate-400'
                                     }`}
                                   >
                                     {day.getDate()}
                                   </span>
-
-                                  {/* Plus action that appears on hover */}
                                   <button
-                                    id={`quick-add-${day.getDate()}`}
                                     onClick={() => {
                                       setActiveAppointment(null);
                                       setInitialDateForCreate(day);
                                       setIsModalOpen(true);
                                     }}
-                                    className="opacity-0 group-hover:opacity-100 text-slate-800 hover:text-slate-950 font-bold transition-opacity p-0.5 rounded cursor-pointer"
-                                    title="Add appointment on this day"
+                                    className="opacity-0 group-hover:opacity-100 text-slate-500 hover:text-slate-900 transition-opacity cursor-pointer"
                                   >
                                     <PlusCircle className="w-3.5 h-3.5" />
                                   </button>
                                 </div>
 
-                                {/* Appointment blocks column */}
-                                <div className="space-y-1 overflow-y-auto max-h-[70px] mt-1">
-                                  {dayApps.slice(0, 3).map((app) => {
+                                {/* Appointment chips */}
+                                <div className="space-y-0.5 flex-1">
+                                  {dayApps.slice(0, MAX_VISIBLE).map((app) => {
                                     const job = jobs.find((j) => j.id === app.jobId);
                                     const palette = job ? getColorPalette(job.color) : getColorPalette('indigo');
-                                    const nowMs = new Date().getTime();
+                                    const nowMs = Date.now();
                                     const appStartMs = new Date(app.startTime).getTime();
-                                    const isUpcoming = appStartMs >= nowMs && appStartMs <= nowMs + 24 * 60 * 60 * 1000;
-                                    
+                                    const isUpcoming = appStartMs >= nowMs && appStartMs <= nowMs + 86400000;
+                                    const timeStr = new Date(app.startTime).toLocaleTimeString('en-AU', {
+                                      hour: 'numeric', minute: '2-digit', hour12: true,
+                                    }).toLowerCase().replace(' ', '');
+
                                     return (
                                       <button
-                                        id={`day-app-${app.id}`}
                                         key={app.id}
-                                        onClick={() => {
-                                          setActiveAppointment(app);
-                                          setIsModalOpen(true);
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+                                          setQuickPreview({ app, x: rect.left, y: rect.bottom + 4 });
                                         }}
-                                        className={`w-full text-left text-[10px] p-1 rounded border leading-tight truncate block ${palette.bg} ${palette.text} ${
-                                          isUpcoming ? 'border-amber-500 ring-1 ring-amber-400/30' : palette.border
-                                        } hover:opacity-90 font-medium transition-all cursor-pointer`}
-                                        title={`${app.title} (${job ? job.clientName : 'Contract'})${isUpcoming ? ' - Starts in next 24 Hours!' : ''}`}
+                                        className={`w-full text-left rounded px-1.5 py-0.5 flex items-center gap-1 leading-none ${palette.bg} ${palette.text} ${
+                                          isUpcoming ? 'ring-1 ring-amber-400' : ''
+                                        } ${app.status === 'cancelled' ? 'opacity-50' : ''} hover:opacity-90 cursor-pointer transition-opacity`}
                                       >
-                                        <div className="font-semibold flex items-center justify-between gap-1">
-                                          <span className="truncate flex items-center gap-0.5">
-                                            {isUpcoming && <span className="text-amber-500 font-bold shrink-0">⚡</span>}
-                                            {app.status === 'cancelled' ? (
-                                              <span className="line-through text-slate-400">{app.title}</span>
-                                            ) : (
-                                              app.title
-                                            )}
-                                          </span>
-                                          {app.reminder && <Bell className="w-2.5 h-2.5 shrink-0 text-amber-500 font-bold" />}
-                                        </div>
-                                        <div className="text-[8px] opacity-80 flex items-center justify-between mt-0.5">
-                                          <span>
-                                            {new Date(app.startTime).toLocaleTimeString('en-US', {
-                                              hour: 'numeric',
-                                              minute: '2-digit',
-                                              hour12: false,
-                                            })}
-                                          </span>
-                                          <div className="flex gap-0.5 items-center">
-                                            {app.recurrenceGroupId && <span className="text-[8px] mr-1 text-slate-500 font-bold" title="Recurring appointment">↺</span>}
-                                            {app.syncedGoogle && <span className="text-[7px]" title="Synced with Google Calendar">G</span>}
-                                            {app.syncedOutlook && <span className="text-[7px]" title="Synced with Outlook">O</span>}
-                                          </div>
-                                        </div>
+                                        {/* Coloured left stripe */}
+                                        <span className={`shrink-0 w-1 h-3 rounded-full opacity-80 ${palette.border.replace('border-', 'bg-')}`} />
+                                        {/* Time */}
+                                        <span className="text-[9px] font-bold font-mono shrink-0 opacity-90">{timeStr}</span>
+                                        {/* Title or client name */}
+                                        <span className={`text-[9px] font-semibold truncate flex-1 ${app.status === 'cancelled' ? 'line-through' : ''}`}>
+                                          {isUpcoming && <span className="text-amber-500 mr-0.5">⚡</span>}
+                                          {job ? job.clientName : app.title}
+                                        </span>
+                                        {app.reminder && <Bell className="w-2 h-2 shrink-0 text-amber-500" />}
+                                        {app.recurrenceGroupId && <span className="text-[8px] shrink-0 opacity-60">↺</span>}
                                       </button>
                                     );
                                   })}
-                                  {dayApps.length > 3 && (
+                                  {dayApps.length > MAX_VISIBLE && (
                                     <button
-                                      id={`more-apps-${day.getDate()}`}
-                                      onClick={() => {
-                                        setSelectedDate(day);
-                                        setView('day');
-                                      }}
-                                      className="text-[9px] font-semibold text-slate-800 block text-center w-full bg-slate-50 border border-slate-200 rounded py-0.5 cursor-pointer"
+                                      onClick={() => { setSelectedDate(day); setView('day'); }}
+                                      className="w-full text-[9px] font-semibold text-indigo-600 hover:text-indigo-800 text-center py-0.5 rounded hover:bg-indigo-50 transition-colors cursor-pointer"
                                     >
-                                      +{dayApps.length - 3} more
+                                      +{dayApps.length - MAX_VISIBLE} more
                                     </button>
                                   )}
                                 </div>
